@@ -1,0 +1,67 @@
+name: Build Hugo and deploy into gh-pages/hugo
+
+on:
+  push:
+    branches:
+    - hugo
+
+jobs:
+  build-and-deploy:
+  steps:
+    - name: Checkout source (hugo branch)
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Setup Hugo
+      uses: peaceiris/actions-hugo@v2
+      with:
+        hugo-version: 'latest'
+
+    - name: Build Site
+      # Build with base URL suitable for the subfolder so asset links are correct
+      run: hugo --minify -b "https://NT9V.github.io/blog/hugo
+
+          - name: Prepare gh-pages branch and copy files
+        env:
+          REPO: ${{ github.repository }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Clone the repo (authenticated) so we can push
+          git clone https://x-access-token:${TOKEN}@github.com/${REPO}.git gh-pages
+          cd gh-pages
+
+          # If gh-pages exists on remote, check it out; otherwise create it as an orphan branch
+          if git ls-remote --exit-code --heads origin gh-pages > /dev/null 2>&1; then
+            echo "gh-pages exists, checking out"
+            git fetch origin gh-pages
+            git checkout gh-pages
+          else
+            echo "gh-pages does not exist, creating orphan branch"
+            git checkout --orphan gh-pages
+            git rm -rf .
+            git commit --allow-empty -m "Initialize gh-pages branch"
+            git push https://x-access-token:${TOKEN}@github.com/${REPO}.git gh-pages
+          fi
+
+          cd ..
+
+          # Copy Hugo public/ into gh-pages/hugo (replace 'hugo' if you want a different subfolder)
+          rm -rf gh-pages/hugo
+          mkdir -p gh-pages/hugo
+          cp -a public/. gh-pages/hugo/
+
+          cd gh-pages
+          git add -A
+
+          # Only commit & push if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to deploy"
+          else
+            git commit -m "Deploy Hugo build from hugo branch — $GITHUB_SHA"
+            git push https://x-access-token:${TOKEN}@github.com/${REPO}.git gh-pages
+          fi
