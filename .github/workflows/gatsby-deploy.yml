@@ -1,0 +1,47 @@
+name: Build and deploy Gatsby into gh-pages/gatsby
+
+on:
+  push:
+    branches:
+    - gatsby
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source (gatsby branch)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Gatsby (ensure pathPrefix is set to /blog/gatsby in gatsby-config.js)
+        run: npm run build
+
+      - name: Prepare gh-pages branch and copy files
+        env:
+          REPO: ${{ github.repository }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git clone --depth=1 --branch gh-pages https://x-access-token:${TOKEN}@github.com/${REPO}.git gh-pages || \
+            (git clone https://github.com/${REPO}.git gh-pages && cd gh-pages && git checkout --orphan gh-pages && git rm -rf . && git commit --allow-empty -m "Create gh-pages branch" && git push https://x-access-token:${TOKEN}@github.com/${REPO}.git gh-pages && cd .. && git clone --depth=1 --branch gh-pages https://x-access-token:${TOKEN}@github.com/${REPO}.git gh-pages)
+          rm -rf gh-pages/gatsby
+          mkdir -p gh-pages/gatsby
+          cp -a public/. gh-pages/gatsby/
+          cd gh-pages
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to deploy"
+          else
+            git commit -m "Deploy Gatsby build from gatsby branch — $GITHUB_SHA"
+            git push https://x-access-token:${TOKEN}@github.com/${REPO}.git gh-pages
+          fi
